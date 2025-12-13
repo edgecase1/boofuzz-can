@@ -5,6 +5,7 @@ import socket
 import struct
 import time
 import can
+import subprocess
 
 class CanRawConnection(ITargetConnection):
     def __init__(self, interface="vcan0"):
@@ -69,10 +70,54 @@ class CanRawConnection(ITargetConnection):
         """Tell boofuzz whether our connection is alive."""
         return self.is_alive
 
+class MyProcessMonitor(BaseMonitor):
+
+    def __init__(self, cmd, args, cwd=None):
+        super().__init__()
+        self.cmd = [cmd] + args
+        print(f"monitor for {self.cmd}")
+        self.proc = None
+        self.cwd = cwd
+        self.start_target()
+
+    def alive(self):
+        if not self.proc:
+            return False
+
+        ret = self.proc.poll()
+        if ret is None:
+            return True
+
+        return False
+
+    def start_target(self, *args, **kwargs):
+        print(f"starting target {self.cmd}")
+        self.proc = subprocess.Popen(self.cmd, cwd=self.cwd)
+        return True
+
+    def stop_target(self, *args, **kwargs):
+        if self.proc:
+            self.proc.terminate()
+            self.proc.wait()
+        return True
+
+    def post_send(self, *args, **kwargs):
+        # check if process is still running
+        if self.proc and self.proc.poll() is not None:
+            return False
+        return True
 
 def main():
+    process_monitor = MyProcessMonitor(
+        cmd="/home/kali/ACOSec/ICSim/icsim",
+        args=["vcan0"],
+        cwd="/home/kali/ACOSec/ICSim"
+    )
+
     conn = CanRawConnection(interface="vcan0")
-    target = Target(connection=conn)
+    target = Target(connection=conn,
+                    restart_target=False,
+                    monitors=[process_monitor]) 
 
     session = Session(
         target=target,
