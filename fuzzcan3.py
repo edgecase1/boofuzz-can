@@ -5,11 +5,15 @@ import socket
 import struct
 import time
 import can
+import scapy
 import subprocess
+import os
+import signal
 
 class CanConnection(ITargetConnection):
-    def __init__(self, interface="vcan0"):
+    def __init__(self, interface="vcan0", can_id=0x123):
         self.interface = interface
+        self.can_id = can_id
         self.is_alive = False
 
     def open(self):
@@ -26,10 +30,11 @@ class CanConnection(ITargetConnection):
 
     def close(self):
         """Close CAN socket"""
-        #if self.sock:
-        #    self.sock.close()
-        self.bus = None
+        print(f"bus {self.interface} is going down")
         self.is_alive = False
+        if self.bus:
+            self.bus.shutdown()
+        self.bus = None
 
     def send(self, data):
         """
@@ -48,7 +53,7 @@ class CanConnection(ITargetConnection):
         print("!!!", data)
 
         msg = can.Message(
-            arbitration_id=0x188, 
+            arbitration_id=self.can_id, 
             data=payload,
             dlc=dlc,
             is_extended_id=False
@@ -70,7 +75,11 @@ class CanConnection(ITargetConnection):
         """Tell boofuzz whether our connection is alive."""
         return self.is_alive
 
+
 class MyProcessMonitor(BaseMonitor):
+    """
+    a custom process monitor because the integrated one uses a TCP port
+    """
     # TODO stop process with destructor
 
     def __init__(self, cmd, args, cwd=None):
@@ -94,16 +103,30 @@ class MyProcessMonitor(BaseMonitor):
     def start_target(self, *args, **kwargs):
         print(f"starting target {self.cmd}")
         self.proc = subprocess.Popen(self.cmd, cwd=self.cwd)
-        while True:
-            if self.proc.poll() is None: break
+        time.sleep(0.5)
+        #while True:
+        #    # wait until the process reacts
+        #    if self.proc.poll() is None: break
+        #    # TODO maybe wait?
+        print("ready")
             
         return True
 
     def stop_target(self, *args, **kwargs):
-        if self.proc:
-            self.proc.terminate()
-            self.proc.wait()
+        print("stopping process")
+        if self.proc and self.proc.poll() is None:
+            try:
+                os.killpg(os.getpgid(self.proc.pid), signal.SIGKILL)
+                time.sleep(0.5)
+            except Exception as e:
+                print(f"[!] Failed to terminate process: {e}")
+
         return True
+
+    def restart_target(self):
+        print("restart_target")
+        self.stop_target()
+        self.start_target()
 
     def post_send(self, *args, **kwargs):
         # check if process is still running
@@ -111,19 +134,20 @@ class MyProcessMonitor(BaseMonitor):
             return False
         return True
 
-    def __exit__(self):
+    def teardown(self):
+        print("teardown!")
         self.stop_target()
+        super().stop_target()
 
     def __str__(self):
         return f"Process Monitor {self.cmd}"
 
-class BitSweep(BitField):
+class BitSweep(Byte):
 
-    def __init__(self, *args, **kwargs):
-        super(BitField, self).__init__(
-            *args,
-            **kwargs
-        )
+    def __init__(
+        self, name=None, default_value="", size=None, padding=b"\x00", encoding="utf-8", max_len=None, 
+        *args, **kwargs):
+        super(Byte, self).__init__(name=name, default_value=default_value, *args, **kwargs)
 
     def mutations(self, default_value):
         yield 0x80 # b10000000
@@ -139,12 +163,14 @@ def main():
     process_monitor = MyProcessMonitor(
         cmd="/home/kali/ACOSec/ICSim/icsim",
         args=["vcan0"],
-        cwd="/home/kali/ACOSec/ICSim"
-    )
+        cwd="/home/kali/ACOSec/ICSim")
 
-    conn = CanConnection(interface="vcan0")
+    conn = CanConnection(
+            interface="vcan0",
+            can_id=0x188)
+
     target = Target(connection=conn,
-                    restart_target=False,
+                    restart_target=True,
                     monitors=[process_monitor]) 
 
     session = Session(
@@ -157,9 +183,10 @@ def main():
     request = Request("can_frame", children=(
         DWord("can_id", 0x188, fuzzable=False),
         Byte("dlc", 8, fuzzable=False),
-        Byte("data", 8)
+        #Byte("data", 8)
         #BitSweep("data")
-        #Block("data", children=(
+        Block("data", children=(
+             BitSweep("data_0", 0x00),
         #    Byte("data_0", 0x00),
         #    Byte("data_1", 0x01),
         #    Byte("data_2", 0x02),
@@ -171,11 +198,16 @@ def main():
         #    Byte("data_6", 0x06),
         #    Byte("data_7", 0x07),
         #    Byte("data_8", 0x08),
-        #))
+        ))
     ))
 
     session.connect(request)
-    session.fuzz()
+    try:
+        session.fuzz()
+    except e:
+        print(e)
+    finally:
+        process_monitor.teardown()
 
 
 if __name__ == "__main__":
