@@ -126,7 +126,7 @@ class MyProcessMonitor(BaseMonitor):
 
         return True
 
-    def restart_target(self):
+    def restart_target(self, *args, **kwargs):
         print("restart_target")
         self.stop_target()
         self.start_target()
@@ -210,7 +210,9 @@ def main():
     session.connect(request)
     try:
         session.fuzz()
-    except e:
+    except KeyboardInterrupt:
+        print("\nKeyboardInterrupt detected. Exiting gracefully.")
+    except Exception as e:
         print(e)
     finally:
         process_monitor.teardown()
