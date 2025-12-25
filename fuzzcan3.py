@@ -75,6 +75,9 @@ class CanConnection(ITargetConnection):
         """Tell boofuzz whether our connection is alive."""
         return self.is_alive
 
+    def __repr__(self):
+        return f"CAN Connection interace={self.interface}"
+
 
 class MyProcessMonitor(BaseMonitor):
     """
@@ -139,7 +142,7 @@ class MyProcessMonitor(BaseMonitor):
         self.stop_target()
         super().stop_target()
 
-    def __str__(self):
+    def __repr__(self):
         return f"Process Monitor {self.cmd}"
 
 class BitSweep(Byte):
@@ -187,6 +190,9 @@ def main():
         #BitSweep("data")
         Block("data", children=(
              BitSweep("data_0", 0x00),
+             BitSweep("data_1", 0x00),
+             BitSweep("data_2", 0x00),
+             BitSweep("data_3", 0x00),
         #    Byte("data_0", 0x00),
         #    Byte("data_1", 0x01),
         #    Byte("data_2", 0x02),
