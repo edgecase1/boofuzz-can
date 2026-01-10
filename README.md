@@ -21,3 +21,29 @@ icsim vcan0
 ```
 python3 fuzzcan.py
 ```
+
+## Docs
+Example program
+```
+conn = CanConnection(interface="vcan0")
+target = Target(connection=conn,
+                restart_target=False) 
+
+session = Session(target=target,
+                  sleep_time=0.01,
+                  reuse_target_connection=True)
+
+request = Request("can_frame", children=(
+             Byte("data_0", 0x00),
+             Byte("data_1", 0x01),
+             Byte("data_2", 0x02),
+             Byte("data_3", 0x03),
+             Byte("data_4", 0x04),
+             Byte("data_5", 0x05),
+             Byte("data_6", 0x06),
+             Byte("data_7", 0x07),
+          ))
+
+session.connect(request)
+session.fuzz()
+```
