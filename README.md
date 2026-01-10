@@ -38,11 +38,11 @@ request = Request("can_frame", children=(
              Byte("data_1", 0x01),
              Byte("data_2", 0x02),
              Byte("data_3", 0x03),
-             Byte("data_4", 0x04),
-             Byte("data_5", 0x05),
-             Byte("data_6", 0x06),
-             Byte("data_7", 0x07),
-          ))
+             Byte("data_4", 0x04, fuzzable=False),
+             Byte("data_5", 0x05, fuzzable=False),
+             Byte("data_6", 0x06, fuzzable=False),
+             Byte("data_7", 0x07, fuzzable=False),
+             ))
 
 session.connect(request)
 session.fuzz()
